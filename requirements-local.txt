@@ -1,0 +1,3 @@
+# 내 컴퓨터에서 Gradio 화면(app.py)까지 쓰려면 이것도 설치: pip install -r requirements-local.txt
+-r requirements.txt
+gradio>=5

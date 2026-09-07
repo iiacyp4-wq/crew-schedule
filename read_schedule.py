@@ -30,10 +30,28 @@ _OCR = None
 
 
 def get_ocr():
+    """OCR 엔진. 호출하면 [(box(4점), text, conf), ...] 를 돌려주는 함수를 반환.
+    새 패키지 rapidocr(파이썬 3.13 지원)를 우선 쓰고, 없으면 예전 rapidocr_onnxruntime."""
     global _OCR
-    if _OCR is None:
+    if _OCR is not None:
+        return _OCR
+    try:
+        from rapidocr import RapidOCR
+        eng = RapidOCR()
+
+        def run(img):
+            r = eng(img)
+            if r is None or r.boxes is None or r.txts is None:
+                return []
+            return [(np.asarray(b).tolist(), t, float(c)) for b, t, c in zip(r.boxes, r.txts, r.scores)]
+    except ImportError:
         from rapidocr_onnxruntime import RapidOCR
-        _OCR = RapidOCR()
+        eng = RapidOCR()
+
+        def run(img):
+            res, _ = eng(img)
+            return [(b, t, float(c)) for b, t, c in (res or [])]
+    _OCR = run
     return _OCR
 
 
@@ -92,9 +110,9 @@ def find_blocks(arr, x0, y0, x1, y1, skip_top):
 def ocr_cell(img, box, scale=3):
     x0, y0, x1, y1 = box
     crop = img.crop((x0, y0, x1, y1)).resize(((x1 - x0) * scale, (y1 - y0) * scale), Image.LANCZOS)
-    res, _ = get_ocr()(np.asarray(crop))
+    res = get_ocr()(np.asarray(crop))
     tokens = []
-    for poly, txt, conf in (res or []):
+    for poly, txt, conf in res:
         xs = [p[0] for p in poly]
         ys = [p[1] for p in poly]
         tokens.append({
@@ -219,8 +237,8 @@ def ocr_block_text(img, box, scale=4):
         return ""
     crop = img.crop((x0, y0, x1, y1)).resize(((x1 - x0) * scale, (y1 - y0) * scale), Image.LANCZOS)
     crop = ImageOps.invert(crop.convert("L")).convert("RGB")
-    res, _ = get_ocr()(np.asarray(crop))
-    return " ".join(t for _, t, _ in (res or []))
+    res = get_ocr()(np.asarray(crop))
+    return " ".join(t for _, t, _ in res)
 
 
 def guess_off_code(s):
@@ -247,12 +265,13 @@ def fix_flight_code(head):
 def read_header(img, grid):
     """'2026.09' 같은 연·월 읽기"""
     W = img.width
-    box = (0, max(0, grid["table_line"]), W, grid["header_line"])
-    toks = ocr_cell(img, box, scale=2)
-    for t in toks:
-        m = re.search(r"(20\d{2})\s*[.\-/]\s*(\d{1,2})", t["text"].translate(DIGIT_FIX))
-        if m:
-            return int(m.group(1)), int(m.group(2))
+    y0, y1 = max(0, grid["table_line"]), grid["header_line"]
+    # 너무 넓은 띠는 OCR이 글자를 놓치므로 왼쪽 일부 → 전체 순으로 시도
+    for x1, sc in ((int(W * 0.35), 3), (int(W * 0.6), 3), (W, 2)):
+        for t in ocr_cell(img, (0, y0, x1, y1), scale=sc):
+            m = re.search(r"(20\d{2})\s*[.\-/]\s*(\d{1,2})", t["text"].translate(DIGIT_FIX))
+            if m:
+                return int(m.group(1)), int(m.group(2))
     return None, None
 
 

@@ -21,5 +21,5 @@ pinned: false
 - `annotate_schedule.py` : 스케줄 글자 → 메모 그린 그림
 - `assets/` : 나눔고딕 폰트(OFL), 돌고래 그림(Noto Emoji, Apache 2.0)
 
-로컬 실행: `pip install -r requirements.txt` 후 `streamlit run streamlit_app.py` 또는 `python app.py`
+로컬 실행: `pip install -r requirements-local.txt` 후 `streamlit run streamlit_app.py` 또는 `python app.py`
 비밀번호: Streamlit은 `.streamlit/secrets.toml`의 `APP_PASSWORD`, Gradio는 환경변수 `APP_PASSWORD`
