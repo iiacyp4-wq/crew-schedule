@@ -25,7 +25,7 @@
 그리는 것:
   1. 상단 제목  🐬 {이름} {월}월 🐬
   2. 비행 묶음(출발~집 도착)에 노란 형광펜 + 아래에 "도시 N박 M일 / 퀵 / 밤도깨비" 라벨
-  3. 쉬는 날(ATDO / ADO / PDO)에 큰 날짜 숫자
+  3. 쉬는 날(ATDO / ADO / PDO)에 큰 날짜 숫자, YVC 칸에 "연차", STBY 칸에 "RF"
 """
 
 import argparse
@@ -43,6 +43,7 @@ from PIL import Image, ImageDraw, ImageFont
 # ──────────────────────────────────────────────────────────────
 
 HOME_AIRPORTS = {"ICN", "GMP"}          # 집(베이스) 공항. 여기서 나가면 여행 시작, 여기 도착하면 여행 끝
+CELL_WORDS = {"YVC": "연차", "STBY": "RF"}     # 빨간 YVC 칸 → 연차, 회색 STBY 칸 → RF 라고 크게 씀
 DAY_OFF_CODES = {"ATDO", "ADO", "PDO", "OFF"}  # 큰 숫자를 넣을 쉬는 날 코드 (YVC 휴가는 제외). OFF = 글씨는 못 읽었지만 초록 블록
 
 # 공항 코드 → 메모에 쓸 한글 이름 (8월 메모에서 쓰던 별명 우선)
@@ -375,6 +376,19 @@ def annotate(image_path: Path, spec: dict, out_path: Path) -> dict:
     big_days |= {int(d) for d in spec.get("big_days_add", [])}
     big_days -= {int(d) for d in spec.get("big_days_remove", [])}
 
+    # 칸에 크게 써 넣을 글자: 쉬는 날 → 날짜 숫자, YVC(빨강) → 연차, STBY(회색) → RF
+    cell_text = {d: str(d) for d in big_days}
+    for d, items in days.items():
+        kinds = {e["kind"] for e in items}
+        codes = {e.get("code") for e in items}
+        if d in cell_text:
+            continue
+        if "YVC" in codes:
+            cell_text[d] = CELL_WORDS["YVC"]
+        elif "stby" in kinds and not any(e["kind"] == "flight" for e in items):
+            cell_text[d] = CELL_WORDS["STBY"]
+    cell_text.update({int(k): v for k, v in spec.get("cell_text", {}).items()})
+
     arr = np.asarray(img.convert("RGB")).astype(int)
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
     od = ImageDraw.Draw(overlay)
@@ -425,8 +439,8 @@ def annotate(image_path: Path, spec: dict, out_path: Path) -> dict:
     img = Image.alpha_composite(img, overlay)
     draw = ImageDraw.Draw(img)
 
-    # ── 쉬는 날 큰 숫자
-    for d in sorted(big_days):
+    # ── 칸 안 큰 글자 (쉬는 날 숫자 / 연차 / RF)
+    for d in sorted(cell_text):
         box = cell_box(d)
         if not box:
             continue
@@ -434,9 +448,11 @@ def annotate(image_path: Path, spec: dict, out_path: Path) -> dict:
         cb = content_bottom(arr, x0, y0, x1, y1, skip_top=date_h)
         top = (cb + int(6 * scale)) if cb else y0 + date_h
         avail_h = y1 - top
+        s = cell_text[d]
         size = max(30 * scale, min(66 * scale, avail_h * 0.62))
+        if not s.isdigit():
+            size = min(size, 48 * scale)          # 글자는 숫자보다 조금 작게
         f = load_font(FONT_KR, size)
-        s = str(d)
         tw, th = text_size(draw, s, f)
         l, tt, r, b = draw.textbbox((0, 0), s, font=f)
         cx = (x0 + x1) / 2 - tw / 2 - l
