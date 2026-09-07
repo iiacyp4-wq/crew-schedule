@@ -1,0 +1,4 @@
+_tmp/
+__pycache__/
+.streamlit/secrets.toml
+.gradio/

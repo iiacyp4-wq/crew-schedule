@@ -1,0 +1,7 @@
+streamlit>=1.40
+gradio>=5
+rapidocr-onnxruntime>=1.4
+onnxruntime>=1.17
+opencv-python-headless>=4.8
+pillow>=10
+numpy
